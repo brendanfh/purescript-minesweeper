@@ -9,3 +9,15 @@ exports.requestAnimationFrame = function(f) {
         });
     }
 };
+
+exports.mapE = function(arr) {
+    return function(f) {
+        return function() {
+            var result = [];
+            for(var i=0, l=arr.length; i<l; i++) {
+                result.push(f(arr[i])());
+            }
+            return result;
+        }
+    }
+}

@@ -16,6 +16,7 @@
     "purescript-arrays": "^1.0.0",
     "purescript-console": "^1.0.0",
     "purescript-math": "^2.0.0",
-    "purescript-integers": "^1.0.0"
+    "purescript-integers": "^1.0.0",
+    "purescript-random": "^1.0.0"
   }
 }

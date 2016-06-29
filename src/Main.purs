@@ -7,8 +7,8 @@ import Data.Int as I
 import Graphics.Canvas as C
 import Control.Monad.Eff.Random (RANDOM, random)
 import Control.Monad.Eff.Ref (modifyRef, writeRef, readRef, newRef)
-import Data.Array ((..))
-import Data.Maybe (Maybe(Just))
+import Data.Array (index, (..))
+import Data.Maybe (fromJust, Maybe(Just))
 import Data.Unit (unit)
 import Math (pi, (%), floor)
 import Partial.Unsafe (unsafePartial)
@@ -41,13 +41,23 @@ initialGameState w h = do
     pure { board }
 
 newBoard :: forall e. Number -> Number -> Eff ( random :: RANDOM | e ) Board
-newBoard w h = mapE (0 .. (I.floor (w * h) - 1)) (\n -> do
-    isMine <- random
-    let t = if isMine > 0.5 then Numbered 5 else Mine
-    pure { pieceType : t,
-           x : ((I.toNumber n) % w) * pieceSize,
-           y : (floor (I.toNumber n / w)) * pieceSize }
-)
+newBoard w h = do
+    board <- mapE (0 .. (I.floor (w * h) - 1)) (\n -> do
+                isMine <- random
+                let t = if isMine > 0.5 then Empty else Mine
+                pure { pieceType : t,
+                       x : ((I.toNumber n) % w) * pieceSize,
+                       y : (floor (I.toNumber n / w)) * pieceSize })
+    board' <- numberBoard board
+    pure board'
+    where
+        numberBoard :: Board -> Eff _ Board
+        numberBoard board = unsafePartial $ do
+            board' <- mapE (0 .. (I.floor (w * h) - 1)) (\n -> do
+                let piece = fromJust (index board n)
+                pure piece
+            )
+            pure board'
 
 update :: GameState -> GameState
 update g = g

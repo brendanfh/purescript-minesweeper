@@ -612,6 +612,28 @@ var PS = {};
       result[n] = i;
       return result;
     };
+  };   
+
+  //------------------------------------------------------------------------------
+  // Array size ------------------------------------------------------------------
+  //------------------------------------------------------------------------------
+
+  exports.length = function (xs) {
+    return xs.length;
+  };
+
+  //------------------------------------------------------------------------------
+  // Indexed operations ----------------------------------------------------------
+  //------------------------------------------------------------------------------
+
+  exports.indexImpl = function (just) {
+    return function (nothing) {
+      return function (xs) {
+        return function (i) {
+          return i < 0 || i >= xs.length ? nothing :  just(xs[i]);
+        };
+      };
+    };
   };
 })(PS["Data.Array"] = PS["Data.Array"] || {});
 (function(exports) {
@@ -643,6 +665,8 @@ var PS = {};
   var Control_Bind = PS["Control.Bind"];
   var Data_Semigroup = PS["Data.Semigroup"];
   var Control_Category = PS["Control.Category"];
+  var index = $foreign.indexImpl(Data_Maybe.Just.create)(Data_Maybe.Nothing.value);
+  exports["index"] = index;
   exports["range"] = $foreign.range;
 })(PS["Data.Array"] = PS["Data.Array"] || {});
 (function(exports) {
@@ -856,16 +880,16 @@ var PS = {};
   var Data_Unit = PS["Data.Unit"];
   var $$Math = PS["Math"];
   var Partial_Unsafe = PS["Partial.Unsafe"];
+  var Data_Function = PS["Data.Function"];
+  var Control_Bind = PS["Control.Bind"];
   var Data_Ring = PS["Data.Ring"];
   var Data_Semiring = PS["Data.Semiring"];
-  var Control_Bind = PS["Control.Bind"];
-  var Data_Ord = PS["Data.Ord"];
   var Control_Applicative = PS["Control.Applicative"];
+  var Data_Ord = PS["Data.Ord"];
   var Data_EuclideanRing = PS["Data.EuclideanRing"];
   var Data_Semigroup = PS["Data.Semigroup"];
   var Data_Show = PS["Data.Show"];
-  var Data_Functor = PS["Data.Functor"];
-  var Data_Function = PS["Data.Function"];        
+  var Data_Functor = PS["Data.Functor"];        
   var Empty = (function () {
       function Empty() {
 
@@ -899,26 +923,41 @@ var PS = {};
   var pieceSize = 56.0;
   var newBoard = function (w) {
       return function (h) {
-          return $foreign.mapE(Data_Array.range(0)(Data_Int.floor(w * h) - 1))(function (n) {
-              return function __do() {
-                  var v = Control_Monad_Eff_Random.random();
-                  var t = (function () {
-                      var $13 = v > 0.5;
-                      if ($13) {
-                          return new Numbered(5);
-                      };
-                      if (!$13) {
-                          return Mine.value;
-                      };
-                      throw new Error("Failed pattern match at Main line 46, column 13 - line 46, column 54: " + [ $13.constructor.name ]);
-                  })();
-                  return {
-                      pieceType: t, 
-                      x: $$Math.remainder(Data_Int.toNumber(n))(w) * pieceSize, 
-                      y: $$Math.floor(Data_Int.toNumber(n) / w) * pieceSize
+          var numberBoard = function (board) {
+              return Data_Function.apply(Partial_Unsafe.unsafePartial)(function (dictPartial) {
+                  return function __do() {
+                      var v = $foreign.mapE(Data_Array.range(0)(Data_Int.floor(w * h) - 1))(function (n) {
+                          var piece = Data_Maybe.fromJust(dictPartial)(Data_Array.index(board)(n));
+                          return Control_Applicative.pure(Control_Monad_Eff.applicativeEff)(piece);
+                      })();
+                      return v;
                   };
-              };
-          });
+              });
+          };
+          return function __do() {
+              var v = $foreign.mapE(Data_Array.range(0)(Data_Int.floor(w * h) - 1))(function (n) {
+                  return function __do() {
+                      var v = Control_Monad_Eff_Random.random();
+                      var t = (function () {
+                          var $18 = v > 0.5;
+                          if ($18) {
+                              return Empty.value;
+                          };
+                          if (!$18) {
+                              return Mine.value;
+                          };
+                          throw new Error("Failed pattern match at Main line 47, column 25 - line 47, column 61: " + [ $18.constructor.name ]);
+                      })();
+                      return {
+                          pieceType: t, 
+                          x: $$Math.remainder(Data_Int.toNumber(n))(w) * pieceSize, 
+                          y: $$Math.floor(Data_Int.toNumber(n) / w) * pieceSize
+                      };
+                  };
+              })();
+              var v1 = numberBoard(v)();
+              return v1;
+          };
       };
   };
   var initialGameState = function (w) {
@@ -1005,7 +1044,7 @@ var PS = {};
                   if (piece.pieceType instanceof Numbered) {
                       return Control_Bind.bind(Control_Monad_Eff.bindEff)(drawBackground(piece))(drawNumbered);
                   };
-                  throw new Error("Failed pattern match at Main line 63, column 9 - line 66, column 64: " + [ piece.pieceType.constructor.name ]);
+                  throw new Error("Failed pattern match at Main line 73, column 9 - line 76, column 64: " + [ piece.pieceType.constructor.name ]);
               })());
           }));
       };
@@ -1025,8 +1064,8 @@ var PS = {};
       return function __do() {
           var v = Graphics_Canvas.getCanvasElementById("gamecanvas")();
           var __unused = function (dictPartial1) {
-              return function ($dollar9) {
-                  return $dollar9;
+              return function ($dollar13) {
+                  return $dollar13;
               };
           };
           return __unused(dictPartial)((function () {
@@ -1047,7 +1086,7 @@ var PS = {};
                       return $foreign.requestAnimationFrame(loop)();
                   };
               };
-              throw new Error("Failed pattern match at Main line 104, column 8 - line 123, column 27: " + [ v.constructor.name ]);
+              throw new Error("Failed pattern match at Main line 114, column 8 - line 133, column 27: " + [ v.constructor.name ]);
           })())();
       };
   }));

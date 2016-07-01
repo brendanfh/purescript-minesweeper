@@ -10,14 +10,19 @@ exports.requestAnimationFrame = function(f) {
     }
 };
 
-exports.mapE = function(arr) {
+exports.onMouseUp = function(button) {
     return function(f) {
         return function() {
-            var result = [];
-            for(var i=0, l=arr.length; i<l; i++) {
-                result.push(f(arr[i])());
+            document.addEventListener("mouseup", function(e) {
+                e.preventDefault();
+                if (e.button == button) {
+                    f(e.layerX)(e.layerY)();
+                }
+                return false;
+            }, false);
+            if (button == 2) {
+                document.oncontextmenu = function() { return false; }
             }
-            return result;
         }
     }
 }

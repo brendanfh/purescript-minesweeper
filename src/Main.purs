@@ -7,7 +7,8 @@ import Data.Int as I
 import Graphics.Canvas as C
 import Control.Monad.Eff.Random (RANDOM, random)
 import Control.Monad.Eff.Ref (modifyRef, writeRef, readRef, newRef)
-import Data.List (List, (..), (!!), modifyAt)
+import Data.HeytingAlgebra ((&&))
+import Data.List (List(..), (..), (!!), modifyAt, filter, null, union, difference)
 import Data.Maybe (fromJust, Maybe(Just, Nothing))
 import Data.Traversable (for)
 import Data.Tuple (Tuple(..), fst, snd)
@@ -15,14 +16,21 @@ import Math (pi, floor)
 import Partial.Unsafe (unsafePartial)
 
 foreign import requestAnimationFrame :: forall e. Eff ( canvas :: C.CANVAS | e ) Unit -> Eff ( canvas :: C.CANVAS | e ) Unit
-foreign import onMouseUp :: forall e a. Int -> (Number -> Number -> Eff e a) -> Eff e Unit
+foreign import onMouseUp :: forall e a. C.CanvasElement -> Int -> (Number -> Number -> Eff e a) -> Eff e Unit
 
 screenSize :: C.Dimensions
-screenSize = { width : 800.0,
-               height : 600.0 }
+screenSize = { width : 20.0 * pieceSize,
+               height : 15.0 * pieceSize }
 
 pieceSize :: Number
 pieceSize = 32.0
+
+data Triple a b c = Triple a b c
+
+data Point a = Point a a
+instance pointEq :: (Eq a) => Eq (Point a) where
+    eq (Point a b) (Point x y) = a == x && b == y
+    eq _ _ = false
 
 data InputState = NoClick | LeftButton Number Number | RightButton Number Number
 
@@ -30,7 +38,7 @@ data PieceType = Empty | Mine | Numbered Int
 instance pieceEq :: Eq PieceType where
     eq Empty Empty = true
     eq Mine Mine = true
-    eq (Numbered n) (Numbered m) = n == m
+    eq (Numbered _) (Numbered _) = true
     eq _ _ = false
 
 type Piece =
@@ -40,16 +48,47 @@ type Piece =
     }
 type Board = List Piece
 
+data CoverType = CoverOn | CoverOff
+instance coverEq :: Eq CoverType where
+    eq CoverOn CoverOn = true
+    eq CoverOff CoverOff = true
+    eq _ _ = false
+
+type Cover = List
+    { coverType :: CoverType
+    , x :: Number
+    , y :: Number
+    }
+initialCover :: Int -> Int -> Cover
+initialCover w h = (Tuple <$> (0 .. (h-1)) <*> (0 .. (w-1))) <#> \(Tuple y x) ->
+    { coverType : CoverOn
+    , x : (I.toNumber x) * pieceSize
+    , y : (I.toNumber y) * pieceSize
+    }
+
+data Animation = NoAnim | Reveal (List (Point Int)) (List (Point Int))
+instance animEq :: Eq Animation where
+    eq NoAnim NoAnim = true
+    eq _ _ = false
+
 type GameState =
     { boardWidth :: Int
     , boardHeight :: Int
     , board :: Board
+    , cover :: Cover
+    , animation :: Animation
     }
 initialGameState :: forall e. Int -> Int -> Eff ( random :: RANDOM | e ) GameState
 initialGameState w h = do
     board <- newBoard w h
-    pure { board, boardWidth : w, boardHeight : h }
+    pure { board
+         , cover : initialCover w h
+         , boardWidth : w
+         , boardHeight : h
+         , animation : NoAnim
+         }
 
+--TODO Add a set amount of mines
 newBoard :: forall e. Int -> Int -> Eff ( random :: RANDOM | e ) Board
 newBoard w h = do
     board <- for (Tuple <$> (0 .. (h-1)) <*> (0 .. (w-1))) \(Tuple y x) -> do
@@ -101,18 +140,74 @@ newBoard w h = do
                     | x < 0  || y < 0  = Nothing
                     | x >= w || y >= h = Nothing
                     | otherwise = (board !! (x + y * w)) <#> \p -> p.pieceType == Mine
+                    
+
+updateAnimation :: GameState -> GameState
+updateAnimation gs =
+    case gs.animation of
+        NoAnim -> gs
+        Reveal toCheck checked -> unsafePartial $ go $ findSpan gs toCheck checked
+    where
+        go :: (Partial) => Triple (List (Point Int)) (List (Point Int)) Int -> GameState
+        go (Triple tc@(Cons _ _) ch dl) =
+            let nCover = fromJust $ modifyAt dl (\p -> p { coverType = CoverOff }) gs.cover
+            in gs { cover = nCover, animation = Reveal tc ch }
+        go (Triple Nil _ dl) =
+            let nCover = fromJust $ modifyAt dl (\p -> p { coverType = CoverOff }) gs.cover
+            in gs { cover = nCover, animation = NoAnim }
+
+findSpan :: GameState -> List (Point Int) -> List (Point Int) -> Triple (List (Point Int)) (List (Point Int)) Int
+findSpan gs (Cons p@(Point px py) ps) checked =
+    let board = gs.board
+        mp = pieceAt board px py
+    in case mp of
+        Just x   -> if x.pieceType == Empty then
+                        Triple (union (difference (mPieces p) checked) ps) (Cons p checked) (px + py * gs.boardWidth)
+                    else if x.pieceType == Numbered 0 then
+                        Triple ps (Cons p checked) (px + py * gs.boardWidth)
+                    else
+                        findSpan gs ps (Cons p checked)
+        Nothing  -> findSpan gs ps checked
+    where
+        mPieces :: Point Int -> List (Point Int)
+        mPieces (Point x y) =
+            (Cons (Point (x - 1) y)
+            (Cons (Point (x + 1) y)
+            (Cons (Point x (y - 1))
+            (Cons (Point x (y + 1))
+            (Cons (Point (x - 1) (y - 1))
+            (Cons (Point (x + 1) (y - 1))
+            (Cons (Point (x - 1) (y + 1))
+            (Cons (Point (x + 1) (y + 1))
+            Nil))))))))
+        
+        pieceAt :: Board -> Int -> Int -> Maybe Piece
+        pieceAt board x y
+            | x < 0 || y < 0                             = Nothing
+            | x >= gs.boardWidth || y >= gs.boardHeight  = Nothing
+            | otherwise = board !! (x + y * gs.boardWidth)
+    
+findSpan gs Nil ch@(Cons (Point sx sy) _) = Triple Nil ch (sx + sy * gs.boardWidth)
+findSpan _ Nil Nil = Triple Nil Nil 0
 
 update :: InputState -> GameState -> Tuple InputState GameState
 update input gs =
-    case input of
-        NoClick -> Tuple input gs
+    let ngs = updateAnimation gs
+    in case input of
+        NoClick -> Tuple input ngs
         LeftButton lx ly ->
-            let tx = I.floor (lx / pieceSize)
-                ty = I.floor (ly / pieceSize)
-                n  = tx + ty * gs.boardWidth
-                nBoard = unsafePartial $ fromJust $ modifyAt n (\p -> p { pieceType = Mine }) gs.board
-            in Tuple NoClick (gs { board = nBoard })
-        RightButton _ _ -> Tuple input gs
+            if ngs.animation == NoAnim then
+                let tx = I.floor (lx / pieceSize)
+                    ty = I.floor (ly / pieceSize)
+                in case ngs.cover !! (tx + ty * ngs.boardWidth) of
+                    Just p   -> if p.coverType == CoverOn then
+                                    Tuple NoClick (ngs { animation = Reveal (Cons (Point tx ty) Nil) Nil })
+                                else
+                                    Tuple NoClick ngs
+                    Nothing -> Tuple NoClick ngs
+            else
+                Tuple NoClick ngs
+        RightButton _ _ -> Tuple input ngs
 
 clearCanvas :: forall e. C.Context2D -> Eff ( canvas :: C.CANVAS | e ) Unit
 clearCanvas ctx = void do
@@ -161,6 +256,17 @@ drawBoard ctx board = void do
             C.fillText ctx (show numOfMines) (piece.x + pieceSize * 0.25) (piece.y + pieceSize * 0.8)
             pure piece
         drawNumbered piece = pure piece
+        
+drawCover :: forall e. C.Context2D -> Cover -> Eff ( canvas :: C.CANVAS | e ) Unit
+drawCover ctx cover = void do
+    for cover \c -> do
+        ifM (pure (c.coverType == CoverOff))
+            (pure unit)
+            (void do
+                C.setFillStyle "black" ctx
+                C.fillRect ctx { x : c.x, y : c.y, w : pieceSize, h : pieceSize }
+                C.setFillStyle "#333" ctx
+                C.fillRect ctx { x : c.x + 4.0, y : c.y + 4.0, w : pieceSize - 4.0, h : pieceSize - 4.0 })
 
 main :: Eff _ Unit
 main = void $ unsafePartial $ do
@@ -169,13 +275,13 @@ main = void $ unsafePartial $ do
 
     ctx <- C.getContext2D canvas
 
-    iState <- initialGameState 24 18
+    iState <- initialGameState 20 15
     stateRef <- newRef iState
     inputRef <- newRef NoClick
     
-    onMouseUp 0 \x y ->
+    onMouseUp canvas 0 \x y ->
         writeRef inputRef (LeftButton x y)
-    onMouseUp 2 \x y ->
+    onMouseUp canvas 2 \x y ->
         writeRef inputRef (RightButton x y)
 
     let loop = void do
@@ -185,8 +291,9 @@ main = void $ unsafePartial $ do
                 nextState = snd nextStates
                 nextInput = fst nextStates
 
-            clearCanvas ctx
+            --clearCanvas ctx
             drawBoard ctx nextState.board
+            drawCover ctx nextState.cover
 
             writeRef inputRef nextInput
             writeRef stateRef nextState

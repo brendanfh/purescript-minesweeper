@@ -10,18 +10,20 @@ exports.requestAnimationFrame = function(f) {
     }
 };
 
-exports.onMouseUp = function(button) {
-    return function(f) {
-        return function() {
-            document.addEventListener("mouseup", function(e) {
-                e.preventDefault();
-                if (e.button == button) {
-                    f(e.layerX)(e.layerY)();
+exports.onMouseUp = function(canvas) {
+    return function(button) {
+        return function(f) {
+            return function() {
+                canvas.addEventListener("mouseup", function(e) {
+                    e.preventDefault();
+                    if (e.button == button) {
+                        f(e.layerX)(e.layerY)();
+                    }
+                    return false;
+                }, false);
+                if (button == 2) {
+                    canvas.oncontextmenu = function() { return false; }
                 }
-                return false;
-            }, false);
-            if (button == 2) {
-                document.oncontextmenu = function() { return false; }
             }
         }
     }

@@ -3,9 +3,27 @@
     <head>
         <meta charset="utf-8">
         <title>Purescript Minesweeper</title>
+        
+        <style>
+            body, canvas {
+                background-color: #222;
+                color: #ddf;
+                font-family: sans-serif;
+                position: relative;
+                padding: 0;
+                margin: 0;
+            }
+            
+            canvas {
+                margin: auto auto;
+            }
+        </style>
     </head>
     <body>
-        <canvas id="gamecanvas">
+        <center>
+            <h1>Purescript Minesweeper</h1>
+            <canvas id="gamecanvas">    
+        </center>
         <script type="text/javascript" src="minesweeper.js"></script>
     </body>
 </html>
